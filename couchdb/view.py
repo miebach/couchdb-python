@@ -121,7 +121,7 @@ def run(input=sys.stdin, output=sys.stdout):
                     }}
 
                 try:
-                    retval = lambda_(*doc[:3])
+                    retval = lambda_(*doc)
                 except Exception, e:
                     # Exception ocurred during validation function. Deny update.
                     log.debug("[DDOC][EVAL]: Exception during validation: %s", e, exc_info=True)
