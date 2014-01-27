@@ -8,6 +8,8 @@
 
 """Support for streamed reading and writing of multipart MIME content."""
 
+from __future__ import print_function
+
 from base64 import b64encode
 from cgi import parse_header
 from email import header
@@ -15,28 +17,29 @@ try:
     from hashlib import md5
 except ImportError:
     from md5 import new as md5
+import six
 import sys
 
 __all__ = ['read_multipart', 'write_multipart']
 __docformat__ = 'restructuredtext en'
 
 
-CRLF = '\r\n'
+CRLF = b'\r\n'
 
 
 def read_multipart(fileobj, boundary=None):
     """Simple streaming MIME multipart parser.
-    
+
     This function takes a file-like object reading a MIME envelope, and yields
     a ``(headers, is_multipart, payload)`` tuple for every part found, where
     ``headers`` is a dictionary containing the MIME headers of that part (with
     names lower-cased), ``is_multipart`` is a boolean indicating whether the
     part is itself multipart, and ``payload`` is either a string (if
     ``is_multipart`` is false), or an iterator over the nested parts.
-    
+
     Note that the iterator produced for nested multipart payloads MUST be fully
     consumed, even if you wish to skip over the content.
-    
+
     :param fileobj: a file-like object
     :param boundary: the part boundary string, will generally be determined
                      automatically from the headers of the outermost multipart
@@ -48,36 +51,38 @@ def read_multipart(fileobj, boundary=None):
     buf = []
     outer = in_headers = boundary is None
 
-    next_boundary = boundary and '--' + boundary + '\n' or None
-    last_boundary = boundary and '--' + boundary + '--\n' or None
+    next_boundary = boundary and ('--' + boundary + '\n').encode() or None
+    last_boundary = boundary and ('--' + boundary + '--\n').encode() or None
 
     def _current_part():
-        payload = ''.join(buf)
-        if payload.endswith('\r\n'):
+        payload = b''.join(buf)
+        if payload.endswith(b'\r\n'):
             payload = payload[:-2]
-        elif payload.endswith('\n'):
+        elif payload.endswith(b'\n'):
             payload = payload[:-1]
         content_md5 = headers.get('content-md5')
+        if six.PY3 and isinstance(payload, six.text_type):
+            payload = payload.encode('utf-8')
         if content_md5:
-            h = b64encode(md5(payload).digest())
+            h = b64encode(md5(payload).digest()).decode()
             if content_md5 != h:
                 raise ValueError('data integrity check failed')
         return headers, False, payload
 
     for line in fileobj:
         if in_headers:
-            line = line.replace(CRLF, '\n')
-            if line != '\n':
-                name, value = [item.strip() for item in line.split(':', 1)]
-                name = name.lower()
-                value, charset = header.decode_header(value)[0]
+            line = line.replace(CRLF, b'\n')
+            if line != b'\n':
+                name, value = [item.strip() for item in line.split(b':', 1)]
+                name = name.lower().decode()
+                value, charset = header.decode_header(value.decode())[0]
                 if charset is None:
                     headers[name] = value
                 else:
                     headers[name] = value.decode(charset)
             else:
                 in_headers = False
-                mimetype, params = parse_header(headers.get('content-type'))
+                mimetype, params = parse_header(headers.get('content-type', ''))
                 if mimetype.startswith('multipart/'):
                     sub_boundary = params['boundary']
                     sub_parts = read_multipart(fileobj, boundary=sub_boundary)
@@ -90,7 +95,7 @@ def read_multipart(fileobj, boundary=None):
                             yield part
                         return
 
-        elif line.replace(CRLF, '\n') == next_boundary:
+        elif line.replace(CRLF, b'\n') == next_boundary:
             # We've reached the start of a new part, as indicated by the
             # boundary
             if headers:
@@ -102,7 +107,7 @@ def read_multipart(fileobj, boundary=None):
                 del buf[:]
             in_headers = True
 
-        elif line.replace(CRLF, '\n') == last_boundary:
+        elif line.replace(CRLF, b'\n') == last_boundary:
             # We're done with this multipart envelope
             break
 
@@ -119,29 +124,31 @@ class MultipartWriter(object):
         self.fileobj = fileobj
         if boundary is None:
             boundary = self._make_boundary()
-        self.boundary = boundary
+        self.boundary = boundary.encode()
         if headers is None:
             headers = {}
         headers['Content-Type'] = 'multipart/%s; boundary="%s"' % (
-            subtype, self.boundary
+            subtype, self.boundary.decode()
         )
         self._write_headers(headers)
 
     def open(self, headers=None, subtype='mixed', boundary=None):
-        self.fileobj.write('--')
+        self.fileobj.write(b'--')
         self.fileobj.write(self.boundary)
         self.fileobj.write(CRLF)
         return MultipartWriter(self.fileobj, headers=headers, subtype=subtype,
                                boundary=boundary)
 
     def add(self, mimetype, content, headers=None):
-        self.fileobj.write('--')
+        self.fileobj.write(b'--')
         self.fileobj.write(self.boundary)
         self.fileobj.write(CRLF)
         if headers is None:
             headers = {}
-        if isinstance(content, unicode):
+        if isinstance(content, six.text_type):
             ctype, params = parse_header(mimetype)
+            if mimetype == 'application/json' and 'charset' not in params:
+                params['charset'] = 'utf-8'
             if 'charset' in params:
                 content = content.encode(params['charset'])
             else:
@@ -150,7 +157,7 @@ class MultipartWriter(object):
         headers['Content-Type'] = mimetype
         if content:
             headers['Content-Length'] = str(len(content))
-            headers['Content-MD5'] = b64encode(md5(content).digest())
+            headers['Content-MD5'] = b64encode(md5(content).digest()).decode()
         self._write_headers(headers)
         if content:
             # XXX: throw an exception if a boundary appears in the content??
@@ -158,9 +165,9 @@ class MultipartWriter(object):
             self.fileobj.write(CRLF)
 
     def close(self):
-        self.fileobj.write('--')
+        self.fileobj.write(b'--')
         self.fileobj.write(self.boundary)
-        self.fileobj.write('--')
+        self.fileobj.write(b'--')
         self.fileobj.write(CRLF)
 
     def _make_boundary(self):
@@ -169,18 +176,24 @@ class MultipartWriter(object):
             return '==' + uuid4().hex + '=='
         except ImportError:
             from random import randrange
-            token = randrange(sys.maxint)
-            format = '%%0%dd' % len(repr(sys.maxint - 1))
+            token = randrange(sys.maxsize)
+            format = '%%0%dd' % len(repr(sys.maxsize - 1))
             return '===============' + (format % token) + '=='
 
     def _write_headers(self, headers):
         if headers:
             for name in sorted(headers.keys()):
                 value = headers[name]
-                if isinstance(value, unicode):
-                    value = str(header.make_header([(value, 'utf-8')]))
+                if isinstance(name, six.text_type):
+                    name = name.encode('utf-8')
+                if isinstance(value, six.text_type):
+                    value = header.make_header([(value, 'utf-8')])
+                    try:
+                        value = str(value).encode('ascii')
+                    except UnicodeEncodeError:
+                        value = value.encode().encode('ascii')
                 self.fileobj.write(name)
-                self.fileobj.write(': ')
+                self.fileobj.write(b': ')
                 self.fileobj.write(value)
                 self.fileobj.write(CRLF)
         self.fileobj.write(CRLF)
@@ -200,13 +213,13 @@ def write_multipart(fileobj, subtype='mixed', boundary=None):
     envelope you call the ``add(mimetype, content, [headers])`` method for
     every part, and finally call the ``close()`` method.
 
-    >>> from StringIO import StringIO
+    >>> from six import StringIO
 
     >>> buf = StringIO()
     >>> envelope = write_multipart(buf, boundary='==123456789==')
     >>> envelope.add('text/plain', 'Just testing')
     >>> envelope.close()
-    >>> print buf.getvalue().replace('\r\n', '\n')
+    >>> print(buf.getvalue().replace('\r\n', '\n'))
     Content-Type: multipart/mixed; boundary="==123456789=="
     <BLANKLINE>
     --==123456789==
@@ -231,7 +244,7 @@ def write_multipart(fileobj, subtype='mixed', boundary=None):
     >>> part.add('text/plain', 'Just testing')
     >>> part.close()
     >>> envelope.close()
-    >>> print buf.getvalue().replace('\r\n', '\n') #:doctest +ELLIPSIS
+    >>> print(buf.getvalue().replace('\r\n', '\n')) #:doctest +ELLIPSIS
     Content-Type: multipart/mixed; boundary="==123456789=="
     <BLANKLINE>
     --==123456789==
@@ -246,7 +259,7 @@ def write_multipart(fileobj, subtype='mixed', boundary=None):
     --==abcdefghi==--
     --==123456789==--
     <BLANKLINE>
-    
+
     :param fileobj: a writable file-like object that the output should get
                     written to
     :param subtype: the subtype of the multipart MIME type (e.g. "mixed")

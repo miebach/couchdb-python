@@ -8,6 +8,8 @@
 
 from decimal import Decimal
 import doctest
+import six
+import sys
 import unittest
 
 from couchdb import design, mapping
@@ -59,7 +61,8 @@ class DocumentTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
         try:
             post.id = 'foo_bar'
             self.fail('Excepted AttributeError')
-        except AttributeError, e:
+        except AttributeError:
+            e = sys.exc_info()[1]
             self.assertEqual('id can only be set on new documents', e.args[0])
 
     def test_batch_update(self):
@@ -253,7 +256,8 @@ class WrappingTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
 
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(doctest.DocTestSuite(mapping))
+    if six.PY2:
+        suite.addTest(doctest.DocTestSuite(mapping))
     suite.addTest(unittest.makeSuite(DocumentTestCase, 'test'))
     suite.addTest(unittest.makeSuite(ListFieldTestCase, 'test'))
     suite.addTest(unittest.makeSuite(WrappingTestCase, 'test'))

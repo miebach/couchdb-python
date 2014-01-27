@@ -2,6 +2,9 @@
 Simple peformance tests.
 """
 
+from __future__ import print_function
+
+import six
 import sys
 import time
 
@@ -10,8 +13,8 @@ import couchdb
 
 def main():
 
-    print 'sys.version : %r' % (sys.version,)
-    print 'sys.platform : %r' % (sys.platform,)
+    print('sys.version : %r' % (sys.version,))
+    print('sys.platform : %r' % (sys.platform,))
 
     tests = [create_doc, create_bulk_docs]
     if len(sys.argv) > 1:
@@ -35,8 +38,9 @@ def _run(server, func):
             stop = time.time()
             sys.stdout.write("%0.2fs\n" % (stop - start,))
             sys.stdout.flush()
-        except Exception, e:
-            sys.stdout.write("FAILED - %r\n" % (unicode(e),))
+        except Exception:
+            e = sys.exc_info()[1]
+            sys.stdout.write("FAILED - %r\n" % (six.text_type(e),))
             sys.stdout.flush()
     finally:
         server.delete(db_name)
@@ -45,7 +49,7 @@ def _run(server, func):
 def create_doc(db):
     """Create lots of docs, one at a time"""
     for i in range(1000):
-        db.save({'_id': unicode(i)})
+        db.save({'_id': six.text_type(i)})
 
 
 def create_bulk_docs(db):
@@ -53,7 +57,7 @@ def create_bulk_docs(db):
     batch_size = 100
     num_batches = 1000
     for i in range(num_batches):
-        db.update([{'_id': unicode((i * batch_size) + j)} for j in range(batch_size)])
+        db.update([{'_id': six.text_type((i * batch_size) + j)} for j in range(batch_size)])
 
 
 if __name__ == '__main__':

@@ -8,6 +8,8 @@
 
 """Utility code for managing design documents."""
 
+from __future__ import print_function
+
 from copy import deepcopy
 from inspect import getsource
 from itertools import groupby
@@ -21,15 +23,15 @@ __docformat__ = 'restructuredtext en'
 
 class ViewDefinition(object):
     r"""Definition of a view stored in a specific design document.
-    
+
     An instance of this class can be used to access the results of the view,
     as well as to keep the view definition in the design document up to date
     with the definition in the application code.
-    
+
     >>> from couchdb import Server
     >>> server = Server()
     >>> db = server.create('python-tests')
-    
+
     >>> view = ViewDefinition('tests', 'all', '''function(doc) {
     ...     emit(doc._id, null);
     ... }''')
@@ -39,30 +41,30 @@ class ViewDefinition(object):
     even exist yet. That can be fixed using the `sync` method:
 
     >>> view.sync(db)                                       #doctest: +ELLIPSIS
-    [(True, '_design/tests', ...)]
+    [(True, u'_design/tests', ...)]
     >>> design_doc = view.get_doc(db)
     >>> design_doc                                          #doctest: +ELLIPSIS
-    <Document '_design/tests'@'...' {...}>
-    >>> print design_doc['views']['all']['map']
+    <Document u'_design/tests'@u'...' {...}>
+    >>> print(design_doc['views']['all']['map'])
     function(doc) {
         emit(doc._id, null);
     }
 
     If you use a Python view server, you can also use Python functions instead
     of code embedded in strings:
-    
+
     >>> def my_map(doc):
     ...     yield doc['somekey'], doc['somevalue']
     >>> view = ViewDefinition('test2', 'somename', my_map, language='python')
     >>> view.sync(db)                                       #doctest: +ELLIPSIS
-    [(True, '_design/test2', ...)]
+    [(True, u'_design/test2', ...)]
     >>> design_doc = view.get_doc(db)
     >>> design_doc                                          #doctest: +ELLIPSIS
-    <Document '_design/test2'@'...' {...}>
-    >>> print design_doc['views']['somename']['map']
+    <Document u'_design/test2'@u'...' {...}>
+    >>> print(design_doc['views']['somename']['map'])
     def my_map(doc):
         yield doc['somekey'], doc['somevalue']
-    
+
     Use the static `sync_many()` method to create or update a collection of
     views in the database in an atomic and efficient manner, even across
     different design documents.
@@ -74,11 +76,11 @@ class ViewDefinition(object):
                  language='javascript', wrapper=None, options=None,
                  **defaults):
         """Initialize the view definition.
-        
+
         Note that the code in `map_fun` and `reduce_fun` is automatically
         dedented, that is, any common leading whitespace is removed from each
         line.
-        
+
         :param design: the name of the design document
         :param name: the name of the view
         :param map_fun: the map function code
@@ -107,7 +109,7 @@ class ViewDefinition(object):
 
     def __call__(self, db, **options):
         """Execute the view in the given database.
-        
+
         :param db: the `Database` instance
         :param options: optional query string parameters
         :return: the view results
@@ -127,7 +129,7 @@ class ViewDefinition(object):
     def get_doc(self, db):
         """Retrieve and return the design document corresponding to this view
         definition from the given database.
-        
+
         :param db: the `Database` instance
         :return: a `client.Document` instance, or `None` if the design document
                  does not exist in the database
@@ -138,7 +140,7 @@ class ViewDefinition(object):
     def sync(self, db):
         """Ensure that the view stored in the database matches the view defined
         by this instance.
-        
+
         :param db: the `Database` instance
         """
         return type(self).sync_many(db, [self])
@@ -148,11 +150,11 @@ class ViewDefinition(object):
         """Ensure that the views stored in the database that correspond to a
         given list of `ViewDefinition` instances match the code defined in
         those instances.
-        
+
         This function might update more than one design document. This is done
         using the CouchDB bulk update feature to ensure atomicity of the
         operation.
-        
+
         :param db: the `Database` instance
         :param views: a sequence of `ViewDefinition` instances
         :param remove_missing: whether views found in a design document that

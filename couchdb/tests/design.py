@@ -7,6 +7,7 @@
 # you should have received as part of this distribution.
 
 import doctest
+import six
 import unittest
 
 from couchdb import design
@@ -52,7 +53,8 @@ class DesignTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
 def suite():
     suite = unittest.TestSuite()
     suite.addTest(unittest.makeSuite(DesignTestCase))
-    suite.addTest(doctest.DocTestSuite(design))
+    if six.PY2:
+        suite.addTest(doctest.DocTestSuite(design))
     return suite
 
 

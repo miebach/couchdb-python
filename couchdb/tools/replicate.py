@@ -17,12 +17,14 @@ CouchDB versions.
 Use 'python replicate.py --help' to get more detailed usage instructions.
 """
 
+from __future__ import print_function
+
 from couchdb import http, client
 import optparse
 import sys
 import time
 import urllib
-import urlparse
+import six.moves.urllib.parse as urlparse
 import fnmatch
 
 def findpath(parser, s):
@@ -99,12 +101,12 @@ def main():
     for sdb, tdb in databases:
 
         start = time.time()
-        print sdb, '->', tdb,
+        print(sdb, '->', tdb, end="")
         sys.stdout.flush()
 
         if tdb not in target:
             target.create(tdb)
-            print "created",
+            print("created", end="")
             sys.stdout.flush()
 
         sdb = '%s%s' % (sbase, urllib.quote(sdb, ''))
@@ -112,12 +114,12 @@ def main():
             target.replicate(sdb, tdb, continuous=options.continuous)
         else:
             target.replicate(sdb, tdb)
-        print '%.1fs' % (time.time() - start)
+        print('%.1fs' % (time.time() - start))
         sys.stdout.flush()
 
     if options.compact:
         for (sdb, tdb) in databases:
-            print 'compact', tdb
+            print('compact', tdb)
             target[tdb].compact()
 
 if __name__ == '__main__':

@@ -10,7 +10,8 @@ import doctest
 import socket
 import time
 import unittest
-from StringIO import StringIO
+from six import BytesIO
+import six
 
 from couchdb import http
 from couchdb.tests import testutil
@@ -30,9 +31,13 @@ class SessionTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
 
 class ResponseBodyTestCase(unittest.TestCase):
     def test_close(self):
-        class TestStream(StringIO):
+        class TestStream(BytesIO):
+            def __init__(self, buf):
+                self._buf = buf
+                BytesIO.__init__(self, buf)
+
             def isclosed(self):
-                return len(self.buf) == self.tell()
+                return len(self._buf) == self.tell()
 
         class Counter(object):
             def __init__(self):
@@ -43,7 +48,7 @@ class ResponseBodyTestCase(unittest.TestCase):
 
         counter = Counter()
 
-        response = http.ResponseBody(TestStream('foobar'), counter)
+        response = http.ResponseBody(TestStream(b'foobar'), counter)
 
         response.read(10) # read more than stream has. close() is called
         response.read() # steam ended. another close() call
@@ -53,17 +58,18 @@ class ResponseBodyTestCase(unittest.TestCase):
     def test_double_iteration_over_same_response_body(self):
         class TestHttpResp(object):
             msg = {'transfer-encoding': 'chunked'}
-            def __init__(self, fp):
+            def __init__(self, fp, _len):
                 self.fp = fp
+                self._len = _len
 
             def isclosed(self):
-                return len(self.fp.buf) == self.fp.tell()
+                return self._len == self.fp.tell()
 
-        data = 'foobarbaz'
-        data = '\n'.join([hex(len(data))[2:], data])
-        response = http.ResponseBody(TestHttpResp(StringIO(data)),
+        data = b'foobarbaz'
+        data = b'\n'.join([hex(len(data))[2:].encode('utf-8'), data])
+        response = http.ResponseBody(TestHttpResp(BytesIO(data), len(data)),
                                      lambda *a, **k: None)
-        self.assertEqual(list(response.iterchunks()), ['foobarbaz'])
+        self.assertEqual(list(response.iterchunks()), [b'foobarbaz'])
         self.assertEqual(list(response.iterchunks()), [])
 
 
@@ -80,7 +86,8 @@ class CacheTestCase(testutil.TempDatabaseMixin, unittest.TestCase):
 
 def suite():
     suite = unittest.TestSuite()
-    suite.addTest(doctest.DocTestSuite(http))
+    if six.PY2:
+        suite.addTest(doctest.DocTestSuite(http))
     suite.addTest(unittest.makeSuite(SessionTestCase, 'test'))
     suite.addTest(unittest.makeSuite(ResponseBodyTestCase, 'test'))
     suite.addTest(unittest.makeSuite(CacheTestCase, 'test'))

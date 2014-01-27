@@ -11,6 +11,8 @@
 file.
 """
 
+from __future__ import print_function
+
 from base64 import b64decode
 from optparse import OptionParser
 import sys
@@ -25,7 +27,7 @@ BULK_SIZE = 1000
 def dump_docs(envelope, docs):
     for doc in docs:
 
-        print >> sys.stderr, 'Dumping document %r' % doc.id
+        print('Dumping document %r' % doc.id, file=sys.stderr)
         attachments = doc.pop('_attachments', {})
         jsondoc = json.encode(doc)
 

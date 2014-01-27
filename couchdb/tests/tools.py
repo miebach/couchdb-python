@@ -9,7 +9,7 @@
 
 
 import unittest
-from StringIO import StringIO
+from six import StringIO
 
 from couchdb import Unauthorized
 from couchdb.tools import load, dump
@@ -44,4 +44,3 @@ def suite():
 
 if __name__ == '__main__':
     unittest.main(defaultTest='suite')
-

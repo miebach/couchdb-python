@@ -58,11 +58,14 @@ True
 >>> del server['python-tests']
 """
 
+from __future__ import print_function
+
 import copy
 
 from calendar import timegm
 from datetime import date, datetime, time
 from decimal import Decimal
+import six
 from time import strptime, struct_time
 
 from couchdb.design import ViewDefinition
@@ -78,7 +81,7 @@ DEFAULT = object()
 
 class Field(object):
     """Basic unit for mapping a piece of data between Python and JSON.
-    
+
     Instances of this class can be added to subclasses of `Document` to describe
     the mapping of a document.
     """
@@ -106,7 +109,7 @@ class Field(object):
         instance._data[self.name] = value
 
     def _to_python(self, value):
-        return unicode(value)
+        return six.text_type(value)
 
     def _to_json(self, value):
         return self._to_python(value)
@@ -127,9 +130,8 @@ class MappingMeta(type):
         d['_fields'] = fields
         return type.__new__(cls, name, bases, d)
 
-
+@six.add_metaclass(MappingMeta)
 class Mapping(object):
-    __metaclass__ = MappingMeta
 
     def __init__(self, **values):
         self._data = {}
@@ -189,7 +191,7 @@ class Mapping(object):
 class ViewField(object):
     r"""Descriptor that can be used to bind a view definition to a property of
     a `Document` class.
-    
+
     >>> class Person(Document):
     ...     name = TextField()
     ...     age = IntegerField()
@@ -199,20 +201,20 @@ class ViewField(object):
     ...         }''')
     >>> Person.by_name
     <ViewDefinition '_design/people/_view/by_name'>
-    
-    >>> print Person.by_name.map_fun
+
+    >>> print(Person.by_name.map_fun)
     function(doc) {
         emit(doc.name, doc);
     }
-    
+
     That property can be used as a function, which will execute the view.
-    
+
     >>> from couchdb import Database
     >>> db = Database('python-tests')
-    
+
     >>> Person.by_name(db, count=3)
     <ViewResults <PermanentView '_design/people/_view/by_name'> {'count': 3}>
-    
+
     The results produced by the view are automatically wrapped in the
     `Document` subclass the descriptor is bound to. In this example, it would
     return instances of the `Person` class. But please note that this requires
@@ -220,10 +222,10 @@ class ViewField(object):
     mapping defined by the containing `Document` class. Alternatively, the
     ``include_docs`` query option can be used to inline the actual documents in
     the view results, which will then be used instead of the values.
-    
+
     If you use Python view functions, this class can also be used as a
     decorator:
-    
+
     >>> class Person(Document):
     ...     name = TextField()
     ...     age = IntegerField()
@@ -231,11 +233,11 @@ class ViewField(object):
     ...     @ViewField.define('people')
     ...     def by_name(doc):
     ...         yield doc['name'], doc
-    
+
     >>> Person.by_name
     <ViewDefinition '_design/people/_view/by_name'>
 
-    >>> print Person.by_name.map_fun
+    >>> print(Person.by_name.map_fun)
     def by_name(doc):
         yield doc['name'], doc
     """
@@ -243,7 +245,7 @@ class ViewField(object):
     def __init__(self, design, map_fun, reduce_fun=None, name=None,
                  language='javascript', wrapper=DEFAULT, **defaults):
         """Initialize the view descriptor.
-        
+
         :param design: the name of the design document
         :param map_fun: the map function code
         :param reduce_fun: the reduce function code (optional)
@@ -293,8 +295,8 @@ class DocumentMeta(MappingMeta):
         return MappingMeta.__new__(cls, name, bases, d)
 
 
+@six.add_metaclass(DocumentMeta)
 class Document(Mapping):
-    __metaclass__ = DocumentMeta
 
     def __init__(self, id=None, **values):
         Mapping.__init__(self, **values)
@@ -319,8 +321,8 @@ class Document(Mapping):
     @property
     def rev(self):
         """The document revision.
-        
-        :rtype: basestring
+
+        :rtype: six.stringtypes
         """
         if hasattr(self._data, 'rev'): # When data is client.Document
             return self._data.rev
@@ -328,18 +330,18 @@ class Document(Mapping):
 
     def items(self):
         """Return the fields as a list of ``(name, value)`` tuples.
-        
+
         This method is provided to enable easy conversion to native dictionary
         objects, for example to allow use of `mapping.Document` instances with
         `client.Database.update`.
-        
+
         >>> class Post(Document):
         ...     title = TextField()
         ...     author = TextField()
         >>> post = Post(id='foo-bar', title='Foo bar', author='Joe')
         >>> sorted(post.items())
         [('_id', 'foo-bar'), ('author', u'Joe'), ('title', u'Foo bar')]
-        
+
         :return: a list of ``(name, value)`` tuples
         """
         retval = []
@@ -355,7 +357,7 @@ class Document(Mapping):
     @classmethod
     def load(cls, db, id):
         """Load a specific document from the given database.
-        
+
         :param db: the `Database` object to retrieve the document from
         :param id: the document ID
         :return: the `Document` instance, or `None` if no document with the
@@ -375,7 +377,7 @@ class Document(Mapping):
     def query(cls, db, map_fun, reduce_fun, language='javascript', **options):
         """Execute a CouchDB temporary view and map the result values back to
         objects of this mapping.
-        
+
         Note that by default, any properties of the document that are not
         included in the values of the view will be treated as if they were
         missing from the document. If you want to load the full document for
@@ -388,7 +390,7 @@ class Document(Mapping):
     def view(cls, db, viewname, **options):
         """Execute a CouchDB named view and map the result values back to
         objects of this mapping.
-        
+
         Note that by default, any properties of the document that are not
         included in the values of the view will be treated as if they were
         missing from the document. If you want to load the full document for
@@ -408,7 +410,7 @@ class Document(Mapping):
 
 class TextField(Field):
     """Mapping field for string values."""
-    _to_python = unicode
+    _to_python = six.text_type
 
 
 class FloatField(Field):
@@ -423,7 +425,7 @@ class IntegerField(Field):
 
 class LongField(Field):
     """Mapping field for long integer values."""
-    _to_python = long
+    _to_python = long if six.PY2 else int
 
 
 class BooleanField(Field):
@@ -438,12 +440,12 @@ class DecimalField(Field):
         return Decimal(value)
 
     def _to_json(self, value):
-        return unicode(value)
+        return six.text_type(value)
 
 
 class DateField(Field):
     """Mapping field for storing dates.
-    
+
     >>> field = DateField()
     >>> field._to_python('2007-04-01')
     datetime.date(2007, 4, 1)
@@ -454,7 +456,7 @@ class DateField(Field):
     """
 
     def _to_python(self, value):
-        if isinstance(value, basestring):
+        if isinstance(value, six.string_types):
             try:
                 value = date(*strptime(value, '%Y-%m-%d')[:3])
             except ValueError:
@@ -469,7 +471,7 @@ class DateField(Field):
 
 class DateTimeField(Field):
     """Mapping field for storing date/time values.
-    
+
     >>> field = DateTimeField()
     >>> field._to_python('2007-04-01T15:30:00Z')
     datetime.datetime(2007, 4, 1, 15, 30)
@@ -480,7 +482,7 @@ class DateTimeField(Field):
     """
 
     def _to_python(self, value):
-        if isinstance(value, basestring):
+        if isinstance(value, six.string_types):
             try:
                 value = value.split('.', 1)[0] # strip out microseconds
                 value = value.rstrip('Z') # remove timezone separator
@@ -499,7 +501,7 @@ class DateTimeField(Field):
 
 class TimeField(Field):
     """Mapping field for storing times.
-    
+
     >>> field = TimeField()
     >>> field._to_python('15:30:00')
     datetime.time(15, 30)
@@ -510,7 +512,7 @@ class TimeField(Field):
     """
 
     def _to_python(self, value):
-        if isinstance(value, basestring):
+        if isinstance(value, six.string_types):
             try:
                 value = value.split('.', 1)[0] # strip out microseconds
                 value = time(*strptime(value, '%H:%M:%S')[3:6])
@@ -526,7 +528,7 @@ class TimeField(Field):
 
 class DictField(Field):
     """Field type for nested dictionaries.
-    
+
     >>> from couchdb import Server
     >>> server = Server()
     >>> db = server.create('python-tests')
@@ -554,7 +556,7 @@ class DictField(Field):
     >>> post.author.email
     u'john@doe.com'
     >>> post.extra
-    {'foo': 'bar'}
+    {u'foo': u'bar'}
 
     >>> del server['python-tests']
     """
@@ -604,11 +606,11 @@ class ListField(Field):
     >>> post = Post.load(db, post.id)
     >>> comment = post.comments[0]
     >>> comment['author']
-    'myself'
+    u'myself'
     >>> comment['content']
-    'Bla bla'
+    u'Bla bla'
     >>> comment['time'] #doctest: +ELLIPSIS
-    '...T...Z'
+    u'...T...Z'
 
     >>> del server['python-tests']
     """
@@ -661,16 +663,24 @@ class ListField(Field):
             return str(self.list)
 
         def __unicode__(self):
-            return unicode(self.list)
+            return six.text_type(self.list)
 
         def __delitem__(self, index):
-            del self.list[index]
+            if isinstance(index, slice):
+                self.__delslice__(index.start, index.stop)
+            else:
+                del self.list[index]
 
         def __getitem__(self, index):
+            if isinstance(index, slice):
+                return self.__getslice__(index.start, index.stop)
             return self.field._to_python(self.list[index])
 
         def __setitem__(self, index, value):
-            self.list[index] = self.field._to_json(value)
+            if isinstance(index, slice):
+                self.__setslice__(index.start, index.stop, value)
+            else:
+                self.list[index] = self.field._to_json(value)
 
         def __delslice__(self, i, j):
             del self.list[i:j]

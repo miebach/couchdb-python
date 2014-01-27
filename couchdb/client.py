@@ -13,9 +13,9 @@
 >>> doc_id, doc_rev = db.save({'type': 'Person', 'name': 'John Doe'})
 >>> doc = db[doc_id]
 >>> doc['type']
-'Person'
+u'Person'
 >>> doc['name']
-'John Doe'
+u'John Doe'
 >>> del db[doc.id]
 >>> doc.id in db
 False
@@ -23,13 +23,15 @@ False
 >>> del server['python-tests']
 """
 
+from __future__ import print_function
+
 import itertools
 import mimetypes
+import six
 import os
 from types import FunctionType
 from inspect import getsource
 from textwrap import dedent
-import re
 import warnings
 
 from couchdb import http, json
@@ -76,7 +78,7 @@ class Server(object):
         :param full_commit: turn on the X-Couch-Full-Commit header
         :param session: an http.Session instance or None for a default session
         """
-        if isinstance(url, basestring):
+        if isinstance(url, six.string_types):
             self.resource = http.Resource(url, session or http.Session())
         else:
             self.resource = url # treat as a Resource object
@@ -113,6 +115,9 @@ class Server(object):
             return True
         except:
             return False
+
+    def __bool__(self):
+        return self.__nonzero__()
 
     def __repr__(self):
         return '<%s %r>' % (type(self).__name__, self.resource.url)
@@ -156,7 +161,7 @@ class Server(object):
         Note that this results in a request being made, and can also be used
         to check for the availability of the server.
 
-        :rtype: `unicode`"""
+        :rtype: `six.text_type`"""
         status, headers, data = self.resource.get_json()
         return data['version']
 
@@ -239,18 +244,18 @@ class Database(object):
 
     >>> doc = db[doc_id]
     >>> doc                 #doctest: +ELLIPSIS
-    <Document '...'@... {...}>
+    <Document u'...'@... {...}>
 
     Documents are represented as instances of the `Row` class, which is
     basically just a normal dictionary with the additional attributes ``id`` and
     ``rev``:
 
     >>> doc.id, doc.rev     #doctest: +ELLIPSIS
-    ('...', ...)
+    (u'...', ...)
     >>> doc['type']
-    'Person'
+    u'Person'
     >>> doc['name']
-    'John Doe'
+    u'John Doe'
 
     To update an existing document, you use item access, too:
 
@@ -272,7 +277,7 @@ class Database(object):
     """
 
     def __init__(self, url, name=None, session=None):
-        if isinstance(url, basestring):
+        if isinstance(url, six.string_types):
             if not url.startswith('http'):
                 url = DEFAULT_BASE_URL + url
             self.resource = http.Resource(url, session)
@@ -313,6 +318,9 @@ class Database(object):
         except:
             return False
 
+    def __bool__(self):
+        return self.__nonzero__()
+
     def __delitem__(self, id):
         """Remove the document with the specified ID from the database.
 
@@ -351,7 +359,7 @@ class Database(object):
         Note that this may require a request to the server unless the name has
         already been cached by the `info()` method.
 
-        :rtype: basestring
+        :rtype: six.string_types
         """
         if self._name is None:
             self.info()
@@ -377,7 +385,7 @@ class Database(object):
 
         :param data: the data to store in the document
         :return: the ID of the created document
-        :rtype: `unicode`
+        :rtype: `six.text_type`
         """
         warnings.warn('Database.create is deprecated, please use Database.save instead [2010-04-13]',
                       DeprecationWarning, stacklevel=2)
@@ -476,7 +484,7 @@ class Database(object):
         :rtype: `str`
         :since: 0.6
         """
-        if not isinstance(src, basestring):
+        if not isinstance(src, six.string_types):
             if not isinstance(src, dict):
                 if hasattr(src, 'items'):
                     src = dict(src.items())
@@ -485,7 +493,7 @@ class Database(object):
                                     type(src))
             src = src['_id']
 
-        if not isinstance(dest, basestring):
+        if not isinstance(dest, six.string_types):
             if not isinstance(dest, dict):
                 if hasattr(dest, 'items'):
                     dest = dict(dest.items())
@@ -500,7 +508,10 @@ class Database(object):
 
         _, _, data = self.resource._request('COPY', src,
                                             headers={'Destination': dest})
-        data = json.decode(data.read())
+        data = data.read()
+        if isinstance(data, six.binary_type):
+            data = data.decode('utf-8')
+        data = json.decode(data)
         return data['rev']
 
     def delete(self, doc):
@@ -522,7 +533,7 @@ class Database(object):
         >>> db.delete(doc)
         Traceback (most recent call last):
           ...
-        ResourceConflict: ('conflict', 'Document update conflict.')
+        ResourceConflict: (u'conflict', u'Document update conflict.')
 
         >>> del server['python-tests']
 
@@ -624,7 +635,7 @@ class Database(object):
                  of the `default` argument if the attachment is not found
         :since: 0.4.1
         """
-        if isinstance(id_or_doc, basestring):
+        if isinstance(id_or_doc, six.string_types):
             id = id_or_doc
         else:
             id = id_or_doc['_id']
@@ -683,17 +694,17 @@ class Database(object):
         ...         emit(doc.name, null);
         ... }'''
         >>> for row in db.query(map_fun):
-        ...     print row.key
+        ...     print(row.key)
         John Doe
         Mary Jane
 
         >>> for row in db.query(map_fun, descending=True):
-        ...     print row.key
+        ...     print(row.key)
         Mary Jane
         John Doe
 
         >>> for row in db.query(map_fun, key='John Doe'):
-        ...     print row.key
+        ...     print(row.key)
         John Doe
 
         >>> del server['python-tests']
@@ -723,10 +734,10 @@ class Database(object):
         ...     Document(type='Person', name='Mary Jane'),
         ...     Document(type='City', name='Gotham City')
         ... ]):
-        ...     print repr(doc) #doctest: +ELLIPSIS
-        (True, '...', '...')
-        (True, '...', '...')
-        (True, '...', '...')
+        ...     print(repr(doc)) #doctest: +ELLIPSIS
+        (True, u'...', u'...')
+        (True, u'...', u'...')
+        (True, u'...', u'...')
 
         >>> del server['python-tests']
 
@@ -808,7 +819,7 @@ class Database(object):
         >>> db['gotham'] = dict(type='City', name='Gotham City')
 
         >>> for row in db.view('_all_docs'):
-        ...     print row.id
+        ...     print(row.id)
         gotham
 
         >>> del server['python-tests']
@@ -928,7 +939,7 @@ class Database(object):
         for ln in lines:
             if not ln: # skip heartbeats
                 continue
-            doc = json.decode(ln)
+            doc = json.decode(ln.decode('utf-8'))
             if 'last_seq' in doc: # consume the rest of the response if this
                 for ln in lines:  # was the last line, allows conn reuse
                     pass
@@ -982,7 +993,7 @@ class Document(dict):
     def id(self):
         """The document ID.
 
-        :rtype: basestring
+        :rtype: six.string_types
         """
         return self['_id']
 
@@ -990,7 +1001,7 @@ class Document(dict):
     def rev(self):
         """The document revision.
 
-        :rtype: basestring
+        :rtype: six.string_types
         """
         return self['_rev']
 
@@ -999,7 +1010,7 @@ class View(object):
     """Abstract representation of a view or query."""
 
     def __init__(self, url, wrapper=None, session=None):
-        if isinstance(url, basestring):
+        if isinstance(url, six.string_types):
             self.resource = http.Resource(url, session)
         else:
             self.resource = url
@@ -1071,7 +1082,7 @@ def _encode_view_options(options):
     retval = {}
     for name, value in options.items():
         if name in ('key', 'startkey', 'endkey') \
-                or not isinstance(value, basestring):
+                or not isinstance(value, six.string_types):
             value = json.encode(value)
         retval[name] = value
     return retval
@@ -1117,7 +1128,7 @@ class ViewResults(object):
 
     >>> people = results[['Person']:['Person','ZZZZ']]
     >>> for person in people:
-    ...     print person.value
+    ...     print(person.value)
     John Doe
     Mary Jane
     >>> people.total_rows, people.offset
@@ -1128,7 +1139,7 @@ class ViewResults(object):
     can still return multiple rows:
 
     >>> list(results[['City', 'Gotham City']])
-    [<Row id='gotham', key=['City', 'Gotham City'], value='Gotham City'>]
+    [<Row id=u'gotham', key=[u'City', u'Gotham City'], value=u'Gotham City'>]
 
     >>> del server['python-tests']
     """

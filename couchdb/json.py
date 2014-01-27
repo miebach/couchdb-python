@@ -35,6 +35,7 @@ __all__ = ['decode', 'encode', 'use']
 
 import warnings
 import os
+import six
 
 _initialized = False
 _using = os.environ.get('COUCHDB_PYTHON_JSON')
@@ -44,24 +45,26 @@ _encode = None
 
 def decode(string):
     """Decode the given JSON string.
-    
+
     :param string: the JSON string to decode
-    :type string: basestring
+    :type string: six.string_types
     :return: the corresponding Python data structure
     :rtype: object
     """
     if not _initialized:
         _initialize()
+    if isinstance(string, six.binary_type):
+        string = string.decode('utf-8')
     return _decode(string)
 
 
 def encode(obj):
     """Encode the given object as a JSON string.
-    
+
     :param obj: the Python data structure to encode
     :type obj: object
     :return: the corresponding JSON string
-    :rtype: basestring
+    :rtype: six.string_types
     """
     if not _initialized:
         _initialize()
@@ -71,16 +74,16 @@ def encode(obj):
 def use(module=None, decode=None, encode=None):
     """Set the JSON library that should be used, either by specifying a known
     module name, or by providing a decode and encode function.
-    
+
     The modules "simplejson" and "json" are currently supported for the
     ``module`` parameter.
-    
+
     If provided, the ``decode`` parameter must be a callable that accepts a
     JSON string and returns a corresponding Python data structure. The
     ``encode`` callable must accept a Python data structure and return the
     corresponding JSON string. Exceptions raised by decoding and encoding
     should be propagated up unaltered.
-    
+
     :param module: the name of the JSON library module to use, or the module
                    object itself
     :type module: str or module
@@ -91,7 +94,7 @@ def use(module=None, decode=None, encode=None):
     """
     global _decode, _encode, _initialized, _using
     if module is not None:
-        if not isinstance(module, basestring):
+        if not isinstance(module, six.string_types):
             module = module.__name__
         if module not in ('cjson', 'json', 'simplejson'):
             raise ValueError('Unsupported JSON module %s' % module)

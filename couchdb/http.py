@@ -11,24 +11,24 @@
 standard library.
 """
 
+from __future__ import print_function
+
 from base64 import b64encode
 from datetime import datetime
 import errno
-from httplib import BadStatusLine, HTTPConnection, HTTPSConnection
+from six.moves.http_client import BadStatusLine, HTTPConnection, HTTPSConnection
+import six
 import socket
 import time
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
+from six.moves import cStringIO as StringIO
 import sys
 try:
     from threading import Lock
 except ImportError:
     from dummy_threading import Lock
-import urllib
-from urlparse import urlsplit, urlunsplit
-from email.Utils import parsedate
+import six.moves.urllib.parse as urllib
+from six.moves.urllib.parse import urlsplit, urlunsplit
+from email.utils import parsedate
 
 from couchdb import json
 
@@ -53,22 +53,23 @@ if sys.version < '2.6':
                 try:
                     self.sock = socket.socket(af, socktype, proto)
                     if self.debuglevel > 0:
-                        print "connect: (%s, %s)" % (self.host, self.port)
+                        print("connect: (%s, %s)" % (self.host, self.port))
 
                     # setting socket timeout
                     self.sock.settimeout(self.timeout)
 
                     self.sock.connect(sa)
-                except socket.error, msg:
+                except socket.error:
+                    msg = sys.exc_info()[1]
                     if self.debuglevel > 0:
-                        print 'connect fail:', (self.host, self.port)
+                        print('connect fail:', (self.host, self.port))
                     if self.sock:
                         self.sock.close()
                     self.sock = None
                     continue
                 break
             if not self.sock:
-                raise socket.error, msg
+                raise socket.error(msg)
 
     _HTTPConnection = HTTPConnection
     _HTTPSConnection = HTTPSConnection
@@ -97,7 +98,7 @@ if sys.version < '2.7':
 
         Based on code originally copied from Python 2.7's httplib module.
         """
-        
+
         def endheaders(self, message_body=None):
             if self.__dict__['_HTTPConnection__state'] == _CS_REQ_STARTED:
                 self.__dict__['_HTTPConnection__state'] = _CS_REQ_SENT
@@ -260,14 +261,14 @@ class Session(object):
                 if etag:
                     headers['If-None-Match'] = etag
 
-        if (body is not None and not isinstance(body, basestring) and
+        if (body is not None and not isinstance(body, six.binary_type) and
                 not hasattr(body, 'read')):
             body = json.encode(body).encode('utf-8')
             headers.setdefault('Content-Type', 'application/json')
 
         if body is None:
             headers.setdefault('Content-Length', '0')
-        elif isinstance(body, basestring):
+        elif isinstance(body, six.string_types) or isinstance(body, six.binary_type):
             headers.setdefault('Content-Length', str(len(body)))
         else:
             headers['Transfer-Encoding'] = 'chunked'
@@ -283,12 +284,13 @@ class Session(object):
             while True:
                 try:
                     return _try_request()
-                except socket.error, e:
+                except socket.error:
+                    e = sys.exc_info()[1]
                     ecode = e.args[0]
                     if ecode not in self.retryable_errors:
                         raise
                     try:
-                        delay = retries.next()
+                        delay = six.next(retries)
                     except StopIteration:
                         # No more retries, raise last socket error.
                         raise e
@@ -297,24 +299,49 @@ class Session(object):
 
         def _try_request():
             try:
+                # conn.request(method, path_query, body, headers)
+                # return conn.getresponse()
+
+                #print("REQ", method, path_query, file=sys.stderr)
                 conn.putrequest(method, path_query, skip_accept_encoding=True)
                 for header in headers:
+                    #print("HDR", header, headers[header], file=sys.stderr)
                     conn.putheader(header, headers[header])
                 if body is None:
+                    #print("ENDNONE", file=sys.stderr)
                     conn.endheaders()
                 else:
-                    if isinstance(body, str):
+                    if isinstance(body, six.string_types):
+                        #print("ENDBODY", 1, body, file=sys.stderr)
+                        _body = body
+                        if isinstance(body, six.text_type):
+                            _body = body.encode('utf-8')
+                            #print("ENDBODY", 2, _body, file=sys.stderr)
+                        # if six.PY3:
+                        #     _body += b'\r\n'
+                        #     print("ENDBODY", 3, _body, file=sys.stderr)
+                        conn.endheaders(_body)
+                    elif isinstance(body, six.binary_type):
+                        #print("ENDBODY", 4, body, file=sys.stderr)
+                        # if six.PY3:
+                        #     _body += b'\r\n'
+                        #     print("ENDBODY", 3, _body, file=sys.stderr)
                         conn.endheaders(body)
                     else: # assume a file-like object and send in chunks
+                        #print("ENDBODY", 3, body, file=sys.stderr)
                         conn.endheaders()
-                        while 1:
+                        while True:
                             chunk = body.read(CHUNK_SIZE)
                             if not chunk:
                                 break
-                            conn.send(('%x\r\n' % len(chunk)) + chunk + '\r\n')
-                        conn.send('0\r\n\r\n')
+                            if isinstance(chunk, six.text_type):
+                                chunk = chunk.encode('utf-8')
+                            status = ('%x\r\n' % len(chunk)).encode('utf-8')
+                            conn.send(status + chunk + b'\r\n')
+                        conn.send(b'0\r\n\r\n')
                 return conn.getresponse()
-            except BadStatusLine, e:
+            except BadStatusLine:
+                e = sys.exc_info()[1]
                 # httplib raises a BadStatusLine when it cannot read the status
                 # line saying, "Presumably, the server closed the connection
                 # before sending a valid response."
@@ -333,6 +360,8 @@ class Session(object):
             self.connection_pool.release(url, conn)
             status, msg, data = cached_resp
             if data is not None:
+                if six.PY3 and isinstance(data, six.binary_type):
+                    data = data.decode('utf-8')
                 data = StringIO(data)
             return status, msg, data
         elif cached_resp:
@@ -364,7 +393,7 @@ class Session(object):
             self.connection_pool.release(url, conn)
 
         # Buffer small non-JSON response bodies
-        elif int(resp.getheader('content-length', sys.maxint)) < CHUNK_SIZE:
+        elif int(resp.getheader('content-length', sys.maxsize)) < CHUNK_SIZE:
             data = resp.read()
             self.connection_pool.release(url, conn)
 
@@ -379,7 +408,7 @@ class Session(object):
         if status >= 400:
             ctype = resp.getheader('content-type')
             if data is not None and 'application/json' in ctype:
-                data = json.decode(data)
+                data = json.decode(data.decode('utf-8'))
                 error = data.get('error'), data.get('reason')
             elif method != 'HEAD':
                 error = resp.read()
@@ -402,6 +431,8 @@ class Session(object):
             self.cache.put(url, (status, resp.msg, data))
 
         if not streamed and data is not None:
+            if six.PY3 and isinstance(data, six.binary_type):
+                data = data.decode('utf-8')
             data = StringIO(data)
 
         return status, resp.msg, data
@@ -545,7 +576,10 @@ class Resource(object):
         status, headers, data = self._request(method, path, body=body,
                                               headers=headers, **params)
         if 'application/json' in headers.get('content-type'):
-            data = json.decode(data.read())
+            rsp = data.read()
+            if isinstance(rsp, six.binary_type):
+                rsp = rsp.decode('utf-8')
+            data = json.decode(rsp)
         return status, headers, data
 
 
@@ -553,7 +587,7 @@ class Resource(object):
 def extract_credentials(url):
     """Extract authentication (user name and password) credentials from the
     given URL.
-    
+
     >>> extract_credentials('http://localhost:5984/_config/')
     ('http://localhost:5984/_config/', None)
     >>> extract_credentials('http://joe:secret@localhost:5984/_config/')
@@ -579,7 +613,7 @@ def basic_auth(credentials):
 
 
 def quote(string, safe=''):
-    if isinstance(string, unicode):
+    if isinstance(string, six.text_type):
         string = string.encode('utf-8')
     return urllib.quote(string, safe)
 
@@ -589,7 +623,7 @@ def urlencode(data):
         data = data.items()
     params = []
     for name, value in data:
-        if isinstance(value, unicode):
+        if isinstance(value, six.text_type):
             value = value.encode('utf-8')
         params.append((name, value))
     return urllib.urlencode(params)
@@ -648,4 +682,3 @@ def urljoin(base, *path, **query):
         retval.extend(['?', urlencode(params)])
 
     return ''.join(retval)
-

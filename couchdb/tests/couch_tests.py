@@ -7,6 +7,7 @@
 # This software is licensed as described in the file COPYING, which
 # you should have received as part of this distribution.
 
+import six
 import unittest
 
 from couchdb.http import ResourceConflict, ResourceNotFound
@@ -94,7 +95,7 @@ class CouchTests(testutil.TempDatabaseMixin, unittest.TestCase):
 
     def test_lots_of_docs(self):
         num = 100 # Crank up manually to really test
-        for i in range(num): 
+        for i in range(num):
             self.db[str(i)] = {'integer': i, 'string': str(i)}
         self.assertEqual(num, len(self.db))
 
@@ -192,7 +193,7 @@ class CouchTests(testutil.TempDatabaseMixin, unittest.TestCase):
             self.assertEqual(texts[idx], row.key)
 
     def test_design_docs(self):
-        for i in range(50): 
+        for i in range(50):
             self.db[str(i)] = {'integer': i, 'string': str(i)}
         self.db['_design/test'] = {'views': {
             'all_docs': {'map': 'function(doc) { emit(doc.integer, null) }'},
@@ -223,7 +224,7 @@ class CouchTests(testutil.TempDatabaseMixin, unittest.TestCase):
             }
         }"""
         rows = iter(self.db.query(query))
-        self.assertEqual(None, rows.next().value)
+        self.assertEqual(None, six.next(rows).value)
         for idx, row in enumerate(rows):
             self.assertEqual(values[idx + 1], row.key)
 
