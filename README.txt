@@ -1,3 +1,5 @@
+*This Fork is outdated, use https://code.google.com/p/couchdb-python instead!*
+
 CouchDB Python Library
 ======================
 
